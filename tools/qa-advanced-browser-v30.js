@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
-const OriginalData = require('./original-visuals-data.js');
+const OriginalData = require(path.join(__dirname, '..', 'original-visuals-data.js'));
 
 const STUDIO_URL = process.argv[2] || 'http://127.0.0.1:8123/studio.html';
 const CHROME = process.env.YITUO_QA_CHROME

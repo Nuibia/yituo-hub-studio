@@ -1,3 +1,13 @@
 node_modules/
 *.log
 .DS_Store
+._*
+Thumbs.db
+# 本地 GUI 测试截图与 CLI 功能测试产物不进版本库（脚本本身保留）
+gui-test-screenshots/
+cli-func-test/*.json
+cli-func-test/*.html
+cli-func-test/*.png
+cli-func-test/*.txt
+# 重构临时目录
+.tmp-refactor/

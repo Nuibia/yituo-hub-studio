@@ -8,6 +8,8 @@
 (function () {
   'use strict';
 
+  var Shared = window.Md2GZHShared;
+
   var DEFAULT_BASE = 'https://api.yituohub.com';
   var LS = {
     base: 'yth.create.base', key: 'yth.create.key', model: 'yth.create.model', topic: 'yth.create.topic',
@@ -81,12 +83,7 @@
 
   /* ---------- 基础工具 ---------- */
 
-  function toast(message) {
-    toastEl.textContent = message;
-    toastEl.hidden = false;
-    clearTimeout(toast._timer);
-    toast._timer = setTimeout(function () { toastEl.hidden = true; }, 2600);
-  }
+  function toast(message) { Shared.toast(toastEl, message, 2600); }
 
   function apiBase() {
     var value = (baseInput.value || DEFAULT_BASE).trim().replace(/\/+$/, '');
@@ -109,7 +106,7 @@
       localStorage.setItem(LS.imgbedKey, imgbedKey.value.trim());
       localStorage.setItem(LS.imgbedField, imgbedField.value.trim());
       localStorage.setItem(LS.imgbedAuth, imgbedAuth.value);
-    } catch (error) { /* 隐私模式等场景静默降级 */ }
+    } catch (error) { Shared.warnOnce('localStorage 不可用，设置不再保存', error); }
   }
 
   function wordCount(text) { return text.replace(/\s/g, '').length; }
@@ -292,6 +289,7 @@
         });
       }
       var reader = response.body.getReader();
+      var lastStatAt = 0;
       function pump() {
         return reader.read().then(function (chunk) {
           if (chunk.done) return;
@@ -300,7 +298,12 @@
             produced += piece;
             output.value = produced;
             output.scrollTop = output.scrollHeight;
-            setStat('生成中 · ' + wordCount(produced) + ' 字', 'live');
+            /* 字数统计节流：长文流式时避免每个 chunk 都全量扫描 */
+            var now = Date.now();
+            if (now - lastStatAt >= 400) {
+              lastStatAt = now;
+              setStat('生成中 · ' + wordCount(produced) + ' 字', 'live');
+            }
           });
           return pump();
         });
@@ -326,7 +329,7 @@
       stopBtn.hidden = true;
       outputPane.classList.remove('generating');
       if (topicInput.value.trim()) {
-        try { localStorage.setItem(LS.topic, topicInput.value.trim()); } catch (error) {}
+        try { localStorage.setItem(LS.topic, topicInput.value.trim()); } catch (error) { Shared.warnOnce('localStorage 不可用，选题不再保存', error); }
       }
     });
   }
@@ -446,9 +449,18 @@
       .then(function () { renderTray(); });
   }
 
+  var MAX_IMAGE_COUNT = 20;
+  var MAX_IMAGE_TOTAL_BYTES = 50 * 1024 * 1024;
+
+  function imageTotalBytes() {
+    return state.images.reduce(function (sum, item) { return sum + (item.blob.size || 0); }, 0);
+  }
+
   function addImageFile(file) {
     if (!file || !/^image\//.test(file.type)) { toast('只支持图片文件'); return; }
     if (file.size > 15 * 1024 * 1024) { toast('图片超过 15MB，先压缩一下再贴'); return; }
+    if (state.images.length >= MAX_IMAGE_COUNT) { toast('配图最多 ' + MAX_IMAGE_COUNT + ' 张，先移除一些再添加'); return; }
+    if (imageTotalBytes() + file.size > MAX_IMAGE_TOTAL_BYTES) { toast('配图总大小即将超过 50MB，先移除大图或启用图床'); return; }
     normalizeImage(file).then(function (normalized) {
       var item = {
         id: ++state.imageSeq,
@@ -468,7 +480,8 @@
 
   function imageMarkdown(item) {
     var src = item.status === 'hosted' ? item.url : item.dataUrl;
-    return '![' + item.fileName + '](' + src + ')';
+    var alt = String(item.fileName).replace(/[\[\]]/g, ' ');
+    return '![' + alt + '](' + src + ')';
   }
 
   function insertImage(item) {
@@ -615,7 +628,7 @@
   topicInput.addEventListener('input', function () {
     clearTimeout(topicInput._timer);
     topicInput._timer = setTimeout(function () {
-      try { localStorage.setItem(LS.topic, topicInput.value.trim()); } catch (error) {}
+      try { localStorage.setItem(LS.topic, topicInput.value.trim()); } catch (error) { Shared.warnOnce('localStorage 不可用，选题不再保存', error); }
     }, 600);
   });
   customType.addEventListener('input', function () {
@@ -634,7 +647,7 @@
        'imgbedUrl', 'imgbedKey', 'imgbedField', 'imgbedAuth'].forEach(function (name) {
         saved[name] = localStorage.getItem(LS[name]) || '';
       });
-    } catch (error) {}
+    } catch (error) { Shared.warnOnce('localStorage 不可用，设置不再恢复', error); }
     baseInput.value = saved.base || DEFAULT_BASE;
     keyInput.value = saved.key;
     topicInput.value = saved.topic;

@@ -1,11 +1,12 @@
 /* YI TUO HUB STUDIO 排版工坊前端
  * - 基础主题：18 套原有版式
- * - 高级排版：蓝梦原创的 15 套 Production V6 主题 × 6 档视觉等级
+ * - 高级排版：蓝梦原创的 16 套 Production V6 主题 × 6 档视觉等级
  */
 (function () {
   'use strict';
 
   var Themes = window.Md2GZHThemes;
+  var Shared = window.Md2GZHShared;
   var Converter = window.Md2GZHConverter;
   var Validator = window.Md2GZHValidator;
   var Originals = window.Md2GZHOriginalVisuals;
@@ -37,10 +38,7 @@
     renderId: 0,
     pending: Promise.resolve(),
     manifest: null,
-    assetCache: {},
-    pickerOpen: false,
-    levelOpen: false,
-    colorOpen: false
+    assetCache: {}
   };
 
   var SAMPLE_MD = [
@@ -204,7 +202,8 @@
     validBadge.textContent = localFileBlocked ? '✗ 请从本地服务打开' : '✗ 高级排版载入失败';
     if (localFileBlocked) {
       validPanel.innerHTML = '<div class="err">✗ 浏览器禁止本地文件页面读取排版资源。'
-        + '<a href="http://127.0.0.1:8123/studio.html">打开本地测试地址</a></div>';
+        + '<a href="' + Themes.esc('http://127.0.0.1:8123' + location.pathname) + '">打开本地测试地址</a>'
+        + '（先在仓库目录运行 python -m http.server 8123）</div>';
     } else {
       validPanel.innerHTML = '<div class="err">✗ ' + Themes.esc(message) + '</div>';
     }
@@ -285,20 +284,55 @@
 
   function scheduleConvert() {
     clearTimeout(state.timer);
-    state.timer = setTimeout(function () { convert().catch(function () {}); }, 350);
+    state.timer = setTimeout(function () { convert().catch(logConvertError); }, 350);
   }
 
-  function toast(message) {
-    toastEl.textContent = message;
-    toastEl.hidden = false;
-    clearTimeout(toast._timer);
-    toast._timer = setTimeout(function () { toastEl.hidden = true; }, 2400);
+  /* renderFailure 已把错误显示在校验面板，这里补一条控制台日志便于排查 */
+  function logConvertError(error) {
+    console.warn('[studio] 排版失败：', error && error.message ? error.message : error);
   }
 
-  /* ---------- 主题下拉选择器 ---------- */
+  function toast(message) { Shared.toast(toastEl, message); }
 
-  var pickerButtons = {};
-  var pickerPop;
+  /* ---------- 下拉选择器骨架（主题库 / 视觉等级 / 配色三处共用） ---------- */
+
+  /* 当前打开的下拉；打开任意一个会自动收起前一个 */
+  var openDropdown = null;
+
+  function createDropdown(slot, config) {
+    var pop = document.createElement('div');
+    pop.id = config.popId;
+    pop.className = config.popClass;
+    pop.hidden = true;
+    pop.addEventListener('click', function (event) { event.stopPropagation(); });
+    var dropdown = {
+      open: false,
+      pop: pop,
+      buttons: [],
+      setOpen: function (value) {
+        if (value === dropdown.open) return;
+        dropdown.open = value;
+        if (value) {
+          if (openDropdown && openDropdown !== dropdown) openDropdown.setOpen(false);
+          openDropdown = dropdown;
+          pop.hidden = false;
+          config.renderPop();
+        } else {
+          if (openDropdown === dropdown) openDropdown = null;
+          pop.hidden = true;
+        }
+        config.renderButtons();
+      },
+      close: function () { dropdown.setOpen(false); }
+    };
+    dropdown.buttons = config.buildButtons(dropdown);
+    slot.appendChild(pop);
+    return dropdown;
+  }
+
+  function closeOpenDropdown() { if (openDropdown) openDropdown.close(); }
+
+  /* ---------- 主题库下拉（基础 18 套 / 高级排版 16 套） ---------- */
 
   function libraryThemes(library) {
     return Themes.SPECS.filter(function (spec) { return library.groups.indexOf(spec.group) !== -1; });
@@ -311,51 +345,37 @@
     return Themes.LIBRARIES[0];
   }
 
-  function closePicker() {
-    state.pickerOpen = false;
-    if (pickerPop) pickerPop.hidden = true;
-    renderPickerButtons();
-  }
-
-  function buildPicker() {
-    pickerSlot.innerHTML = '';
-    Themes.LIBRARIES.forEach(function (library) {
-      var button = document.createElement('button');
-      button.className = 'picker-btn';
-      button.dataset.library = library.id;
-      button.type = 'button';
-      button.addEventListener('click', function (event) {
-        event.stopPropagation();
-        closeLevelPicker();
-        closeColorPicker();
-        var sameOpenLibrary = state.pickerOpen && state.library === library.id;
-        state.library = library.id;
-        state.group = 'all';
-        state.pickerOpen = !sameOpenLibrary;
-        pickerPop.hidden = !state.pickerOpen;
-        renderPickerButtons();
-        if (state.pickerOpen) renderPickerPop();
+  var themeDropdown = createDropdown(pickerSlot, {
+    popId: 'themePickerPop',
+    popClass: 'picker-pop',
+    buildButtons: function (dropdown) {
+      return Themes.LIBRARIES.map(function (library) {
+        var button = document.createElement('button');
+        button.className = 'picker-btn';
+        button.dataset.library = library.id;
+        button.type = 'button';
+        button.addEventListener('click', function (event) {
+          event.stopPropagation();
+          var sameOpenLibrary = dropdown.open && state.library === library.id;
+          state.library = library.id;
+          state.group = 'all';
+          dropdown.setOpen(!sameOpenLibrary);
+        });
+        pickerSlot.appendChild(button);
+        return button;
       });
-      pickerButtons[library.id] = button;
-      pickerSlot.appendChild(button);
-    });
-    pickerPop = document.createElement('div');
-    pickerPop.className = 'picker-pop';
-    pickerPop.id = 'themePickerPop';
-    pickerPop.hidden = true;
-    pickerPop.addEventListener('click', function (event) { event.stopPropagation(); });
-    pickerSlot.appendChild(pickerPop);
-    renderPickerButtons();
-    renderPickerPop();
-  }
+    },
+    renderButtons: renderThemeButtons,
+    renderPop: renderThemePop
+  });
 
-  function renderPickerButtons() {
+  function renderThemeButtons() {
     var spec = Themes.getSpec(state.themeId);
     var selectedLibrary = libraryForTheme(spec);
-    Themes.LIBRARIES.forEach(function (library) {
-      var button = pickerButtons[library.id];
+    Themes.LIBRARIES.forEach(function (library, index) {
+      var button = themeDropdown.buttons[index];
       var selected = selectedLibrary.id === library.id;
-      var open = state.pickerOpen && state.library === library.id;
+      var open = themeDropdown.open && state.library === library.id;
       var count = libraryThemes(library).length;
       button.classList.toggle('selected', selected);
       button.classList.toggle('open', open);
@@ -364,14 +384,14 @@
       button.setAttribute('aria-label', library.name + (selected ? '，当前为' + spec.name : '，共' + count + '套'));
       button.innerHTML = '<span class="picker-kind">' + library.shortName + '</span>'
         + (selected ? '<span class="swatch" style="background:' + spec.swatch + '"></span><span class="picker-name">' + spec.name + '</span>' : '<span class="picker-count">' + count + ' 套</span>')
-        + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+        + Shared.CHEVRON_SVG;
     });
   }
 
-  function renderPickerPop() {
+  function renderThemePop() {
     var library = Themes.LIBRARIES.filter(function (item) { return item.id === state.library; })[0] || Themes.LIBRARIES[0];
     var inLibrary = libraryThemes(library);
-    var note = library.id === 'original' ? '15 THEMES · 6 LEVELS' : (inLibrary.length + ' THEMES');
+    var note = inLibrary.length + ' THEMES' + (library.id === 'original' ? ' · 6 LEVELS' : '');
     var html = '<div class="pop-head"><span class="pop-title">' + library.en + ' · ' + library.name + '</span><span class="pop-note">' + note + '</span></div>';
     if (library.id === 'base') {
       html += '<div class="pop-tabs">';
@@ -386,73 +406,58 @@
       html += '<button class="pop-card' + (spec.id === state.themeId ? ' active' : '') + '" data-id="' + spec.id + '"><span class="swatch" style="background:' + spec.swatch + '"></span><span class="pop-card-text"><span class="tname">' + spec.name + '</span><span class="tdesc">' + spec.desc + '</span></span></button>';
     });
     html += '</div>';
-    pickerPop.innerHTML = html;
-    pickerPop.querySelectorAll('.group-tab').forEach(function (tab) {
-      tab.addEventListener('click', function () { state.group = tab.dataset.group; renderPickerPop(); });
+    var pop = themeDropdown.pop;
+    pop.innerHTML = html;
+    pop.querySelectorAll('.group-tab').forEach(function (tab) {
+      tab.addEventListener('click', function () { state.group = tab.dataset.group; renderThemePop(); });
     });
-    pickerPop.querySelectorAll('.pop-card').forEach(function (card) {
+    pop.querySelectorAll('.pop-card').forEach(function (card) {
       card.addEventListener('click', function () {
         state.themeId = card.dataset.id;
         state.library = libraryForTheme(Themes.getSpec(state.themeId)).id;
         state.colorId = 'default';
-        closePicker();
-        renderPickerButtons();
+        themeDropdown.close();
         renderLevelControls();
         renderColorControls();
-        convert().catch(function () {});
+        convert().catch(logConvertError);
       });
     });
   }
 
   /* ---------- 高级排版视觉等级 ---------- */
 
-  var levelButton;
-  var levelPop;
-
-  function closeLevelPicker() {
-    state.levelOpen = false;
-    if (levelPop) levelPop.hidden = true;
-    renderLevelControls();
-  }
-
-  function buildLevelPicker() {
-    levelSlot.innerHTML = '';
-    levelButton = document.createElement('button');
-    levelButton.type = 'button';
-    levelButton.className = 'picker-btn level-picker-btn';
-    levelButton.addEventListener('click', function (event) {
-      event.stopPropagation();
-      closePicker();
-      closeColorPicker();
-      state.levelOpen = !state.levelOpen;
-      levelPop.hidden = !state.levelOpen;
-      renderLevelControls();
-      if (state.levelOpen) renderLevelPop();
-    });
-    levelPop = document.createElement('div');
-    levelPop.id = 'levelPickerPop';
-    levelPop.className = 'level-pop';
-    levelPop.hidden = true;
-    levelPop.addEventListener('click', function (event) { event.stopPropagation(); });
-    levelSlot.appendChild(levelButton);
-    levelSlot.appendChild(levelPop);
-    renderLevelControls();
-  }
+  var levelDropdown = createDropdown(levelSlot, {
+    popId: 'levelPickerPop',
+    popClass: 'level-pop',
+    buildButtons: function (dropdown) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'picker-btn level-picker-btn';
+      button.addEventListener('click', function (event) {
+        event.stopPropagation();
+        dropdown.setOpen(!dropdown.open);
+      });
+      levelSlot.appendChild(button);
+      return [button];
+    },
+    renderButtons: renderLevelControls,
+    renderPop: renderLevelPop
+  });
 
   function renderLevelControls() {
+    var button = levelDropdown.buttons[0];
     var original = isOriginalSpec(Themes.getSpec(state.themeId));
     levelSlot.hidden = !original;
     motionModeBtn.hidden = !original || !isDynamicLevel();
     if (!original) {
-      state.levelOpen = false;
-      if (levelPop) levelPop.hidden = true;
+      levelDropdown.close();
       return;
     }
     var level = currentLevel();
-    levelButton.classList.toggle('open', state.levelOpen);
-    levelButton.setAttribute('aria-expanded', String(state.levelOpen));
-    levelButton.setAttribute('aria-controls', 'levelPickerPop');
-    levelButton.innerHTML = '<span class="picker-kind">视觉</span><span class="level-index">L' + level.order + '</span><span class="picker-name">' + level.short + '</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+    button.classList.toggle('open', levelDropdown.open);
+    button.setAttribute('aria-expanded', String(levelDropdown.open));
+    button.setAttribute('aria-controls', 'levelPickerPop');
+    button.innerHTML = '<span class="picker-kind">视觉</span><span class="level-index">L' + level.order + '</span><span class="picker-name">' + level.short + '</span>' + Shared.CHEVRON_SVG;
     motionModeBtn.classList.toggle('active', state.motionEnabled);
     motionModeBtn.textContent = state.motionEnabled ? '动态' : '静态回退';
     motionModeBtn.setAttribute('aria-pressed', String(state.motionEnabled));
@@ -460,20 +465,20 @@
   }
 
   function renderLevelPop() {
-    var html = '<div class="level-pop-head"><span class="pop-title">PRESENTATION LEVEL · 视觉等级</span><span class="pop-note">76 COMBINATIONS</span></div><div class="level-list">';
+    var html = '<div class="level-pop-head"><span class="pop-title">PRESENTATION LEVEL · 视觉等级</span><span class="pop-note">81 COMBINATIONS</span></div><div class="level-list">';
     OriginalData.LEVELS.forEach(function (level) {
       html += '<button class="level-option' + (state.levelId === level.id ? ' active' : '') + '" data-level="' + level.id + '"><span class="level-no">L' + level.order + '</span><span class="level-copy"><strong>' + level.name + '</strong><small>' + level.description + '</small></span>' + (level.motion !== 'none' ? '<span class="level-motion">动</span>' : '') + '</button>';
     });
-    html += '</div><p class="level-footnote">L1 为全库唯一黑白排版；L2–L6 分别适用于 15 套原创主题。</p>';
-    levelPop.innerHTML = html;
-    levelPop.querySelectorAll('.level-option').forEach(function (option) {
+    html += '</div><p class="level-footnote">L1 为全库唯一黑白排版；L2–L6 分别适用于 16 套原创主题。</p>';
+    var pop = levelDropdown.pop;
+    pop.innerHTML = html;
+    pop.querySelectorAll('.level-option').forEach(function (option) {
       option.addEventListener('click', function () {
         state.levelId = option.dataset.level;
         state.motionEnabled = true;
-        closeLevelPicker();
-        renderLevelControls();
+        levelDropdown.close();
         renderColorControls();
-        convert().catch(function () {});
+        convert().catch(logConvertError);
       });
     });
   }
@@ -481,13 +486,10 @@
   motionModeBtn.addEventListener('click', function () {
     state.motionEnabled = !state.motionEnabled;
     renderLevelControls();
-    convert().catch(function () {});
+    convert().catch(logConvertError);
   });
 
   /* ---------- 高级排版配色选择（每主题 5 套定制配色） ---------- */
-
-  var colorButton;
-  var colorPop;
 
   function currentColorways() {
     return (isOriginalSpec(Themes.getSpec(state.themeId)) && OriginalData.colorwaysForTheme(state.themeId)) || null;
@@ -500,50 +502,38 @@
     return list[0];
   }
 
-  function closeColorPicker() {
-    state.colorOpen = false;
-    if (colorPop) colorPop.hidden = true;
-    renderColorControls();
-  }
-
-  function buildColorPicker() {
-    colorSlot.innerHTML = '';
-    colorButton = document.createElement('button');
-    colorButton.type = 'button';
-    colorButton.className = 'picker-btn color-picker-btn';
-    colorButton.addEventListener('click', function (event) {
-      event.stopPropagation();
-      closePicker();
-      closeLevelPicker();
-      state.colorOpen = !state.colorOpen;
-      colorPop.hidden = !state.colorOpen;
-      renderColorControls();
-      if (state.colorOpen) renderColorPop();
-    });
-    colorPop = document.createElement('div');
-    colorPop.id = 'colorPickerPop';
-    colorPop.className = 'color-pop';
-    colorPop.hidden = true;
-    colorPop.addEventListener('click', function (event) { event.stopPropagation(); });
-    colorSlot.appendChild(colorButton);
-    colorSlot.appendChild(colorPop);
-    renderColorControls();
-  }
+  var colorDropdown = createDropdown(colorSlot, {
+    popId: 'colorPickerPop',
+    popClass: 'color-pop',
+    buildButtons: function (dropdown) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'picker-btn color-picker-btn';
+      button.addEventListener('click', function (event) {
+        event.stopPropagation();
+        dropdown.setOpen(!dropdown.open);
+      });
+      colorSlot.appendChild(button);
+      return [button];
+    },
+    renderButtons: renderColorControls,
+    renderPop: renderColorPop
+  });
 
   function renderColorControls() {
+    var button = colorDropdown.buttons[0];
     var original = isOriginalSpec(Themes.getSpec(state.themeId));
     var visible = original && currentLevel().order > 1 && currentColorways();
     colorSlot.hidden = !visible;
     if (!visible) {
-      state.colorOpen = false;
-      if (colorPop) colorPop.hidden = true;
+      colorDropdown.close();
       return;
     }
     var colorway = currentColorway();
-    colorButton.classList.toggle('open', state.colorOpen);
-    colorButton.setAttribute('aria-expanded', String(state.colorOpen));
-    colorButton.setAttribute('aria-controls', 'colorPickerPop');
-    colorButton.innerHTML = '<span class="picker-kind">配色</span><span class="color-chip-dots">' + colorwayDots(colorway) + '</span><span class="picker-name">' + colorway.name + '</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+    button.classList.toggle('open', colorDropdown.open);
+    button.setAttribute('aria-expanded', String(colorDropdown.open));
+    button.setAttribute('aria-controls', 'colorPickerPop');
+    button.innerHTML = '<span class="picker-kind">配色</span><span class="color-chip-dots">' + colorwayDots(colorway) + '</span><span class="picker-name">' + colorway.name + '</span>' + Shared.CHEVRON_SVG;
   }
 
   /* 配色预览色点：底色、面板、主强调、次强调、线条。 */
@@ -565,16 +555,15 @@
       html += '<button class="color-option' + (state.colorId === colorway.id ? ' active' : '') + '" data-color="' + colorway.id + '"><span class="color-chip-dots large">' + colorwayDots(colorway) + '</span><span class="color-copy"><strong>' + colorway.name + '</strong><small>' + spec.name + ' · ' + (colorway.id === 'default' ? '主题原配色' : '定制配色') + '</small></span></button>';
     });
     html += '</div><p class="level-footnote">每套主题附带 4 套定制配色；L2–L6 全等级生效，L1 黑白极简不参与配色。</p>';
-    colorPop.innerHTML = html;
-    colorPop.querySelectorAll('.color-option').forEach(function (option) {
+    var pop = colorDropdown.pop;
+    pop.innerHTML = html;
+    pop.querySelectorAll('.color-option').forEach(function (option) {
       option.addEventListener('click', function () {
         state.colorId = option.dataset.color;
-        closeColorPicker();
-        renderColorControls();
-        convert().catch(function () {});
+        colorDropdown.close();
+        convert().catch(logConvertError);
       });
     });
-
   }
 
   /* ---------- 复制 / 下载 ---------- */
@@ -705,8 +694,8 @@
   document.getElementById('btnCopy').addEventListener('click', copyToWechat);
   document.getElementById('btnDownload').addEventListener('click', download);
   exportImageBtn.addEventListener('click', exportLongImage);
-  document.getElementById('btnSample').addEventListener('click', function () { editor.value = SAMPLE_MD; convert().catch(function () {}); });
-  document.getElementById('btnClear').addEventListener('click', function () { editor.value = ''; convert().catch(function () {}); editor.focus(); });
+  document.getElementById('btnSample').addEventListener('click', function () { editor.value = SAMPLE_MD; convert().catch(logConvertError); });
+  document.getElementById('btnClear').addEventListener('click', function () { editor.value = ''; convert().catch(logConvertError); editor.focus(); });
   document.querySelectorAll('[data-preview-width]').forEach(function (button) {
     button.addEventListener('click', function () {
       setPreviewWidth(this.getAttribute('data-preview-width'));
@@ -716,12 +705,10 @@
   if (window.ResizeObserver) new ResizeObserver(applyPreviewLayout).observe(previewWrap);
   else window.addEventListener('resize', applyPreviewLayout);
   validBadge.addEventListener('click', function () { validPanel.hidden = !validPanel.hidden; });
-  document.addEventListener('click', function () { closePicker(); closeLevelPicker(); closeColorPicker(); });
-  document.addEventListener('keydown', function (event) { if (event.key === 'Escape') { closePicker(); closeLevelPicker(); closeColorPicker(); } });
+  document.addEventListener('click', closeOpenDropdown);
+  document.addEventListener('keydown', function (event) { if (event.key === 'Escape') closeOpenDropdown(); });
 
-  buildPicker();
-  buildLevelPicker();
-  buildColorPicker();
+  renderThemeButtons();
   setPreviewWidth(previewWidth);
   editor.value = SAMPLE_MD;
   try {
@@ -732,5 +719,5 @@
       toast('已载入 AI 创作的文章，选一套主题即可复制');
     }
   } catch (error) { /* 隐私模式等场景回落到示例文章 */ }
-  convert().catch(function () {});
+  convert().catch(logConvertError);
 })();

@@ -1,0 +1,23 @@
+# 站点部署白名单：deploy.sh (rsync --files-from) 与发布产物共用。
+# 每行一个文件或目录（目录整体同步）；test.js 会校验三个入口 HTML
+# 引用的本地资源都在本清单内，防止「上线漏文件」再次发生。
+index.html
+studio.html
+create.html
+favicon.svg
+landing.css
+styles.css
+create.css
+shared.js
+themes-data.js
+themes.js
+converter.js
+validator.js
+original-visuals-data.js
+original-visuals.js
+app.js
+create.js
+assets
+vendor
+motion
+nginx.conf

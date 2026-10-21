@@ -141,12 +141,14 @@ npm run qa:long-image-export
 
 若浏览器不在默认位置，可指定其可执行文件：`YITUO_QA_CHROME=/path/to/chromium npm run qa:long-image-export`。
 
-部署到服务器（任选）：
+部署到服务器（任选，两者共用同一份站点白名单 `deploy-files.txt`，测试产物不会上线）：
 
 ```bash
-./deploy.sh root@你的服务器IP                          # rsync + nginx reload
+./deploy.sh root@你的服务器IP                          # rsync 白名单 + nginx reload
 docker build -t yituo-hub-studio . && docker run -d -p 80:80 yituo-hub-studio
 ```
+
+> 新增站点文件后记得把它加进 `deploy-files.txt`——`npm test` 会校验三个入口 HTML 引用的本地资源都在清单内（同时校验 `.dockerignore` 不误排除），漏了会直接 FAIL。
 
 ## ⌨️ 输入语法速览
 
@@ -168,14 +170,18 @@ docker build -t yituo-hub-studio . && docker run -d -p 80:80 yituo-hub-studio
 ├── create.html       AI 文章创作（直连用户自填 API，流式生成）
 ├── create.js         创作页逻辑（模型列表 / 流式 SSE / 配图压缩 / 图床上传）
 ├── create.css        创作页样式
+├── shared.js         跨模块共享工具（esc / toast / 占位比例 / 红绿灯色）
+├── themes-data.js    34 套主题注册数据（纯数据，与引擎分离）
 ├── themes.js         基础主题引擎与通用排版组件
 ├── original-visuals-data.js  16 套原创主题与 6 档等级注册表
 ├── original-visuals.js       原创完整文章组合与动静态回退渲染器
 ├── converter.js      Markdown → 语义 token（含智能标记策略）
 ├── validator.js      公众号平台红线校验器
-├── app.js            工坊前端（并列主题库 + 原创等级选择）
+├── app.js            工坊前端（通用下拉骨架 + 并列主题库 + 原创等级选择）
 ├── motion/           Production V6（79 组 / 158 个 SVG + 32 份最终静态/动态模板）
-└── deploy.sh / Dockerfile / nginx.conf
+├── tools/            开发用编译与浏览器 QA 脚本（不参与上线）
+├── test.js           Node 冒烟测试（npm test / npm run check）
+└── deploy.sh / Dockerfile / .dockerignore / deploy-files.txt / nginx.conf
 ```
 
 ## 🤝 作者
@@ -197,11 +203,11 @@ docker build -t yituo-hub-studio . && docker run -d -p 80:80 yituo-hub-studio
 
 这是一个零构建、零依赖的纯静态项目，参与门槛很低——改完刷新浏览器就能看到效果。非常欢迎通过 Issue 报告问题，或提交 Pull Request 一起把它打磨得更好：
 
-- **贡献新主题**：基础主题在 `themes.js` 里按参数化 spec 注册；高级排版组件在 `motion/` 下扩展，保持样式全内联、文字用 `<span leaf>` 包裹、不使用 absolute/fixed/sticky 定位。
+- **贡献新主题**：基础主题在 `themes-data.js` 里按参数化 spec 注册；高级排版组件在 `motion/` 下扩展，保持样式全内联、文字用 `<span leaf>` 包裹、不使用 absolute/fixed/sticky 定位。
 - **修复缺陷**：排版引擎（`converter.js`）、平台红线校验（`validator.js`）、工坊交互（`app.js`）都是独立模块，欢迎认领。
 - **改进文档与示例**：README、语法速览、使用教程，或晒出你的排版成品案例。
 
-提交前请跑一遍 `npm run check`（JS 语法 + 单元测试），确保全部通过；新主题建议附一张预览截图。任何问题欢迎开 [Issue](https://github.com/yan9651688/yituo-hub-studio/issues) 讨论，我们会尽快回复。
+提交前请跑一遍 `npm run check`（JS 语法 + 单元测试），确保全部通过；新主题建议附一张预览截图。推送到 GitHub 后 CI（`.github/workflows/ci.yml`）会自动跑同一套检查。任何问题欢迎开 [Issue](https://github.com/yan9651688/yituo-hub-studio/issues) 讨论，我们会尽快回复。
 
 ## 🙏 致谢
 

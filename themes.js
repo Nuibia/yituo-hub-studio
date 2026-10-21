@@ -6,17 +6,19 @@
  * 产物遵守平台红线：全内联样式、文字一律 <span leaf>、只用 section/p/span/strong/em/img 等
  */
 (function (global, factory) {
-  var api = factory();
+  var Shared = global.Md2GZHShared || (typeof require === 'function' ? require('./shared.js') : null);
+  var Registry = global.Md2GZHThemesData || (typeof require === 'function' ? require('./themes-data.js') : null);
+  var api = factory(Shared, Registry);
   global.Md2GZHThemes = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-})(typeof window !== 'undefined' ? window : globalThis, function () {
+})(typeof window !== 'undefined' ? window : globalThis, function (Shared, Registry) {
   'use strict';
 
-  function esc(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
+  var esc = Shared.esc;
+  var placeholderRatio = Shared.placeholderRatio;
+  var SPECS = Registry.SPECS;
+  var GROUPS = Registry.GROUPS;
+  var LIBRARIES = Registry.LIBRARIES;
 
   function leaf(text, style) {
     return '<span' + (style ? ' style="' + style + '"' : '') + ' leaf="">' + text + '</span>';
@@ -302,9 +304,7 @@
     var fg = dark ? '#E2E8F0' : spec.c.deep;
     var h = '<section style="background:' + bg + ';border-radius:10px;padding:12px 16px 14px;margin:20px 0;' + (dark ? '' : 'border:1px solid ' + spec.c.border + ';') + '">'
       + '<section style="display:flex;align-items:center;margin-bottom:10px;">'
-      + '<section style="width:10px;height:10px;border-radius:50%;background:#FF5F57;"></section>'
-      + '<section style="width:10px;height:10px;border-radius:50%;background:#FEBC2E;margin-left:6px;"></section>'
-      + '<section style="width:10px;height:10px;border-radius:50%;background:#28C840;margin-left:6px;"></section>'
+      + Shared.trafficLightsHtml(10, 6, '50%')
       + '<p style="margin:0 0 0 10px;font-size:11px;letter-spacing:1px;color:' + (dark ? '#94A3B8' : spec.c.sub) + ';font-family:Menlo,Consolas,monospace;">' + leaf(esc(t.lang || 'code')) + '</p>'
       + '</section>'
       + '<section style="font-size:13px;line-height:1.7;color:' + fg + ';font-family:Menlo,Consolas,\u0027Courier New\u0027,monospace;">';
@@ -314,14 +314,6 @@
       h += '<p style="margin:0;">' + leaf(line) + '</p>';
     }
     return h + '</section></section>';
-  }
-
-  function placeholderRatio(src) {
-    var match = String(src || '').toLowerCase().match(/^placeholder:\/\/(16-9|4-5|2\.35-1)$/);
-    if (!match) return null;
-    if (match[1] === '4-5') return { key: '4-5', label: '4:5', css: '4 / 5', width: '72%' };
-    if (match[1] === '2.35-1') return { key: '2.35-1', label: '2.35:1', css: '2.35 / 1', width: '100%' };
-    return { key: '16-9', label: '16:9', css: '16 / 9', width: '100%' };
   }
 
   function buildThemePlaceholder(spec, t, ratio) {

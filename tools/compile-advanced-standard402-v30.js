@@ -8,7 +8,7 @@
  * - 仅更新 motion/templates-v6 下的 30 个最终模板和对应清单哈希。
  *
  * 用法：
- *   node compile-advanced-standard402-v30.js [Production V6 原画廊目录]
+ *   node tools/compile-advanced-standard402-v30.js [Production V6 原画廊目录]
  */
 'use strict';
 
@@ -23,15 +23,16 @@ const SCALE = TARGET_WIDTH / SOURCE_WIDTH;
 const CONTENT_WIDTH = 370;
 const RELEASE = 'production-template.standard402-full-effects.v30';
 
+const REPO_ROOT = path.resolve(__dirname, '..');
 const defaultSource = path.resolve(
-  __dirname,
+  REPO_ROOT,
   '..',
   'wechat-motion-layout',
   'examples',
   'production-motion-v6'
 );
 const sourceDir = path.resolve(process.argv[2] || defaultSource);
-const targetDir = path.join(__dirname, 'motion', 'templates-v6');
+const targetDir = path.join(REPO_ROOT, 'motion', 'templates-v6');
 const manifestPath = path.join(targetDir, 'manifest.json');
 
 function fail(message) {

@@ -1,0 +1,23 @@
+# 只让站点运行所需文件进镜像；新增站点文件自动包含，测试与开发产物一律排除。
+.git
+.github
+node_modules
+npm-debug.log*
+package-lock.json
+*.md
+LICENSE
+.gitignore
+.dockerignore
+test.js
+tools/
+cli-func-test/
+cli-patches/
+cli-site/
+gui-test-screenshots/
+l6-draft-kit/
+deploy/
+deploy.sh
+Dockerfile
+deploy-files.txt
+qa-*.js
+compile-*.js

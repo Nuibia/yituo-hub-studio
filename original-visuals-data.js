@@ -11,7 +11,7 @@
 
   var LEVELS = [
     { id: 'minimal-mono', order: 1, name: '黑白极简', short: '黑白极简', description: '全库唯一一套黑白排版，只保留文字层级、留白与细线。', motion: 'none' },
-    { id: 'static-simple', order: 2, name: '静态简约', short: '静态简约', description: '十五套定稿静态模板，保留各自结构与阅读节奏。', motion: 'none' },
+    { id: 'static-simple', order: 2, name: '静态简约', short: '静态简约', description: '十六套定稿静态模板，保留各自结构与阅读节奏。', motion: 'none' },
     { id: 'static-title-bar', order: 3, name: '静态装饰标题栏', short: '静态标题栏', description: '增加静态标题引导线与同主题章节路径装饰。', motion: 'none' },
     { id: 'static-themed-frame', order: 4, name: '静态主题场景', short: '静态主题场景', description: '严格使用冻结的 V24 完整静态模板，保留标题、目录、章节与尾部锚点。', motion: 'none' },
     { id: 'motion-title-static-frame', order: 5, name: '标题场景动效', short: '标题场景动效', description: '使用 V6 动态标题，其余结构保持冻结的 V24 静态模板。', motion: 'title-scene-only' },

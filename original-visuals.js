@@ -4,10 +4,11 @@
 (function (global, factory) {
   var themes = global.Md2GZHThemes || (typeof require === 'function' ? require('./themes.js') : null);
   var data = global.Md2GZHOriginalData || (typeof require === 'function' ? require('./original-visuals-data.js') : null);
-  var api = factory(themes, data);
+  var shared = global.Md2GZHShared || (typeof require === 'function' ? require('./shared.js') : null);
+  var api = factory(themes, data, shared);
   global.Md2GZHOriginalVisuals = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-})(typeof window !== 'undefined' ? window : globalThis, function (Themes, Data) {
+})(typeof window !== 'undefined' ? window : globalThis, function (Themes, Data, Shared) {
   'use strict';
 
   function fail(message) { throw new Error(message); }
@@ -57,9 +58,7 @@
     return text;
   }
 
-  function escapeRe(value) {
-    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
+  var escapeRe = Shared.escapeRegExp;
 
   function hexShorthand(hex) {
     var match = /^#([0-9A-Fa-f])\1([0-9A-Fa-f])\2([0-9A-Fa-f])\3$/.exec(hex);
@@ -364,9 +363,7 @@
     var h = '<section data-advanced-effect="code" style="margin:22px 0 26px;padding:13px 15px 15px;'
       + 'border:1px solid ' + p.line + ';border-radius:' + p.radius + 'px;background:' + p.surface + ';">'
       + '<section style="display:flex;align-items:center;margin-bottom:10px;">'
-      + '<span style="width:8px;height:8px;border-radius:50%;background:#FF5F57;"></span>'
-      + '<span style="width:8px;height:8px;margin-left:6px;border-radius:50%;background:#FEBC2E;"></span>'
-      + '<span style="width:8px;height:8px;margin-left:6px;border-radius:50%;background:#28C840;"></span>'
+      + Shared.trafficLightsHtml(8, 6, '50%')
       + '<span style="margin-left:10px;font-size:7.5px;letter-spacing:.12em;color:' + surfaceMuted(p)
       + ';font-family:Menlo,Consolas,monospace;">' + text(String(token.lang || 'code').toUpperCase()) + '</span></section>'
       + '<section style="font-size:11.5px;line-height:1.72;color:' + surfaceInk(p)
@@ -377,13 +374,7 @@
     return h + '</section></section>';
   }
 
-  function placeholderRatio(src) {
-    var match = String(src || '').toLowerCase().match(/^placeholder:\/\/(16-9|4-5|2\.35-1)$/);
-    if (!match) return null;
-    if (match[1] === '4-5') return { key: '4-5', label: '4:5', css: '4 / 5', width: '72%' };
-    if (match[1] === '2.35-1') return { key: '2.35-1', label: '2.35:1', css: '2.35 / 1', width: '100%' };
-    return { key: '16-9', label: '16:9', css: '16 / 9', width: '100%' };
-  }
+  var placeholderRatio = Shared.placeholderRatio;
 
   function genericPlaceholderMotif(p) {
     return '<section aria-hidden="true" data-placeholder-motif="fallback" style="width:100%;display:flex;align-items:center;">'

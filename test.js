@@ -13,9 +13,19 @@ const Converter = require('./converter.js');
 const Validator = require('./validator.js');
 const OriginalData = require('./original-visuals-data.js');
 const OriginalVisuals = require('./original-visuals.js');
+const Shared = require('./shared.js');
+const escapeRegExp = Shared.escapeRegExp;
 const manifest = require('./motion/manifest.json');
 const templateManifest = require('./motion/templates-v6/manifest.json');
 let fail = false;
+
+/* 命名条件断言：FAIL 时打印具体未满足的条件，而不是一个整体布尔 */
+function checkConditions(name, conditions) {
+  const failed = conditions.filter(function (pair) { return !pair[1]; }).map(function (pair) { return pair[0]; });
+  console.log(name + ' ' + (failed.length ? 'FAIL' : 'PASS') + (failed.length ? ' 未满足: ' + failed.join('、') : ''));
+  if (failed.length) fail = true;
+  return failed.length === 0;
+}
 
 const studioSource = fs.readFileSync(path.join(__dirname, 'studio.html'), 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
@@ -24,49 +34,50 @@ const studioDoc = new JSDOM(studioSource).window.document;
 const previewWidths = Array.from(studioDoc.querySelectorAll('[data-preview-width]'), function (button) {
   return button.getAttribute('data-preview-width');
 });
-const previewPresetsOk = JSON.stringify(previewWidths) === JSON.stringify(['fit', '375', '402', '440'])
-  && studioDoc.querySelectorAll('[data-preview-width][aria-pressed="true"]').length === 1
-  && studioDoc.querySelector('[data-preview-width][aria-pressed="true"]').getAttribute('data-preview-width') === 'fit';
-console.log('preview-width-presets ' + (previewPresetsOk ? 'PASS' : 'FAIL')
-  + ' values=' + previewWidths.join(','));
-if (!previewPresetsOk) fail = true;
+checkConditions('preview-width-presets', [
+  ['宽度档位为 fit/375/402/440', JSON.stringify(previewWidths) === JSON.stringify(['fit', '375', '402', '440'])],
+  ['仅一个 aria-pressed=true', studioDoc.querySelectorAll('[data-preview-width][aria-pressed="true"]').length === 1],
+  ['默认档为 fit', studioDoc.querySelector('[data-preview-width][aria-pressed="true"]').getAttribute('data-preview-width') === 'fit']
+]);
+console.log('  values=' + previewWidths.join(','));
 
-const responsivePreviewOk = appSource.indexOf('function applyPreviewLayout()') !== -1
-  && appSource.indexOf('function syncPreviewHeight()') !== -1
-  && appSource.indexOf('function queuePreviewHeight()') !== -1
-  && appSource.indexOf("previewWrap.classList.toggle('device', fixed);") !== -1
-  && appSource.indexOf("previewWrap.classList.toggle('readable', !fixed);") !== -1
-  && appSource.indexOf("body.style.zoom = '1';") !== -1
-  && appSource.indexOf("body.setAttribute('data-preview-scale', '1');") !== -1
-  && appSource.indexOf('data-preview-content-layer') === -1
-  && appSource.indexOf('data-preview-screen="true"') === -1
-  && stylesSource.indexOf('.preview-wrap.device #preview') !== -1
-  && stylesSource.indexOf('.preview-wrap.readable #preview') !== -1
-  && stylesSource.indexOf('width: min(500px, 100%);') !== -1
-  && stylesSource.indexOf('background: #EDF0F3; overflow: auto;') !== -1
-  && stylesSource.indexOf('body { min-height: 0; overflow: hidden; }') !== -1
-  && appSource.indexOf('html,body{overflow:hidden;scrollbar-width:none;}') !== -1
-  && appSource.indexOf('function previewShell(html, advanced)') !== -1
-  && appSource.indexOf('padding:0;background:transparent;display:flex;justify-content:center;align-items:flex-start;') !== -1
-  && appSource.indexOf('padding:18px 16px;background:#fff;') !== -1;
-console.log('preview-outer-scroll-canvas ' + (responsivePreviewOk ? 'PASS' : 'FAIL'));
-if (!responsivePreviewOk) fail = true;
+checkConditions('preview-outer-scroll-canvas', [
+  ['applyPreviewLayout 函数存在', appSource.indexOf('function applyPreviewLayout()') !== -1],
+  ['syncPreviewHeight 函数存在', appSource.indexOf('function syncPreviewHeight()') !== -1],
+  ['queuePreviewHeight 函数存在', appSource.indexOf('function queuePreviewHeight()') !== -1],
+  ['device 类切换', appSource.indexOf("previewWrap.classList.toggle('device', fixed);") !== -1],
+  ['readable 类切换', appSource.indexOf("previewWrap.classList.toggle('readable', !fixed);") !== -1],
+  ['zoom 重置', appSource.indexOf("body.style.zoom = '1';") !== -1],
+  ['data-preview-scale=1', appSource.indexOf("body.setAttribute('data-preview-scale', '1');") !== -1],
+  ['无 data-preview-content-layer 残留', appSource.indexOf('data-preview-content-layer') === -1],
+  ['无 data-preview-screen 残留', appSource.indexOf('data-preview-screen="true"') === -1],
+  ['device 容器样式', stylesSource.indexOf('.preview-wrap.device #preview') !== -1],
+  ['readable 容器样式', stylesSource.indexOf('.preview-wrap.readable #preview') !== -1],
+  ['500px 上限', stylesSource.indexOf('width: min(500px, 100%);') !== -1],
+  ['预览背景', stylesSource.indexOf('background: #EDF0F3; overflow: auto;') !== -1],
+  ['iframe body 隐藏溢出', stylesSource.indexOf('body { min-height: 0; overflow: hidden; }') !== -1],
+  ['iframe 隐藏滚动条', appSource.indexOf('html,body{overflow:hidden;scrollbar-width:none;}') !== -1],
+  ['previewShell 函数存在', appSource.indexOf('function previewShell(html, advanced)') !== -1],
+  ['高级排版预览布局', appSource.indexOf('padding:0;background:transparent;display:flex;justify-content:center;align-items:flex-start;') !== -1],
+  ['基础主题预览布局', appSource.indexOf('padding:18px 16px;background:#fff;') !== -1]
+]);
 
-const localServeHintOk = appSource.indexOf('http://127.0.0.1:8123/studio.html') !== -1
-  && appSource.indexOf("location.protocol === 'file:'") !== -1;
-console.log('local-file-resource-hint ' + (localServeHintOk ? 'PASS' : 'FAIL'));
-if (!localServeHintOk) fail = true;
+checkConditions('local-file-resource-hint', [
+  ['检测 file: 协议', appSource.indexOf("location.protocol === 'file:'") !== -1],
+  ['本地服务地址由当前页面推导', appSource.indexOf("'http://127.0.0.1:8123' + location.pathname") !== -1],
+  ['不再硬编码完整调试 URL', appSource.indexOf('http://127.0.0.1:8123/studio.html') === -1]
+]);
 
-const imageExportOk = studioDoc.querySelector('#btnDownload + #btnExportImage')
-  && studioDoc.querySelector('script[src="vendor/html2canvas.min.js"]')
-  && fs.existsSync(path.join(__dirname, 'vendor', 'html2canvas.min.js'))
-  && appSource.indexOf('function exportLongImage()') !== -1
-  && appSource.indexOf('window.html2canvas(target') !== -1
-  && appSource.indexOf('useCORS: true') !== -1
-  && appSource.indexOf('preferredScale = 3') !== -1
-  && appSource.indexOf('maxCanvasSide = 16384') !== -1;
-console.log('offline-long-image-export ' + (imageExportOk ? 'PASS' : 'FAIL'));
-if (!imageExportOk) fail = true;
+checkConditions('offline-long-image-export', [
+  ['导出按钮存在', !!studioDoc.querySelector('#btnDownload + #btnExportImage')],
+  ['html2canvas 脚本引入', !!studioDoc.querySelector('script[src="vendor/html2canvas.min.js"]')],
+  ['html2canvas 文件在库', fs.existsSync(path.join(__dirname, 'vendor', 'html2canvas.min.js'))],
+  ['exportLongImage 函数存在', appSource.indexOf('function exportLongImage()') !== -1],
+  ['调用 html2canvas', appSource.indexOf('window.html2canvas(target') !== -1],
+  ['useCORS 开启', appSource.indexOf('useCORS: true') !== -1],
+  ['首选 3 倍导出', appSource.indexOf('preferredScale = 3') !== -1],
+  ['画布边上限 16384', appSource.indexOf('maxCanvasSide = 16384') !== -1]
+]);
 
 const baseLibrary = Themes.LIBRARIES.find(function (library) { return library.id === 'base'; });
 const originalLibrary = Themes.LIBRARIES.find(function (library) { return library.id === 'original'; });
@@ -788,20 +799,55 @@ console.log('colorway-render ' + (colorwayRenderFailures === 0 ? 'PASS' : 'FAIL'
 if (colorwayRenderFailures) fail = true;
 
 /* 工坊 UI：配色弹层插槽、事件接线与渲染参数必须就位。 */
-const colorwayUiOk = studioDoc.getElementById('colorPickerSlot')
-  && appSource.indexOf('function buildColorPicker()') !== -1
-  && appSource.indexOf('function renderColorControls()') !== -1
-  && appSource.indexOf('function renderColorPop()') !== -1
-  && appSource.indexOf('colorId: state.colorId') !== -1
-  && appSource.indexOf('state.colorId = \'default\';') !== -1
-  && appSource.indexOf('buildColorPicker();') !== -1
-  && appSource.indexOf('closeColorPicker();') !== -1
-  && stylesSource.indexOf('.color-pop') !== -1;
-console.log('colorway-ui ' + (colorwayUiOk ? 'PASS' : 'FAIL'));
-if (!colorwayUiOk) fail = true;
+checkConditions('colorway-ui', [
+  ['配色插槽存在于 studio.html', !!studioDoc.getElementById('colorPickerSlot')],
+  ['app.js 接线配色插槽', appSource.indexOf("getElementById('colorPickerSlot')") !== -1],
+  ['配色弹层 id 接线', appSource.indexOf('colorPickerPop') !== -1],
+  ['渲染参数携带 colorId', appSource.indexOf('colorId: state.colorId') !== -1],
+  ['切主题重置配色', appSource.indexOf("state.colorId = 'default'") !== -1],
+  ['读取主题配色注册表', appSource.indexOf('colorwaysForTheme') !== -1],
+  ['配色弹层样式', stylesSource.indexOf('.color-pop') !== -1]
+]);
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/* ---------- 部署清单：入口 HTML 的本地资源必须全部可上线 ---------- */
+const deployFiles = fs.readFileSync(path.join(__dirname, 'deploy-files.txt'), 'utf8')
+  .split('\n').map(function (line) { return line.trim(); })
+  .filter(function (line) { return line && line.charAt(0) !== '#'; });
+const manifestSet = new Set(deployFiles);
+let deployFailures = 0;
+for (const entry of deployFiles) {
+  if (!fs.existsSync(path.join(__dirname, entry))) {
+    console.log('DEPLOY MANIFEST FAIL 清单指向不存在的文件: ' + entry);
+    deployFailures++;
+  }
 }
+for (const page of ['index.html', 'studio.html', 'create.html']) {
+  const html = fs.readFileSync(path.join(__dirname, page), 'utf8');
+  const refs = Array.from(html.matchAll(/(?:src|href)="([^"#?]+)"/g), function (match) { return match[1]; })
+    .filter(function (ref) { return !/^(https?:|\/|data:|mailto:)/.test(ref); });
+  for (const ref of refs) {
+    const covered = manifestSet.has(ref) || deployFiles.some(function (entry) {
+      return ref.indexOf(entry + '/') === 0; /* 目录条目覆盖其下所有文件 */
+    });
+    if (!covered) {
+      console.log('DEPLOY REF FAIL ' + page + ' 引用的 ' + ref + ' 不在 deploy-files.txt，上线会 404');
+      deployFailures++;
+    }
+  }
+}
+const dockerIgnores = fs.readFileSync(path.join(__dirname, '.dockerignore'), 'utf8')
+  .split('\n').map(function (line) { return line.trim(); })
+  .filter(function (line) { return line && line.charAt(0) !== '#'; });
+for (const entry of deployFiles) {
+  for (const pattern of dockerIgnores) {
+    const dirPattern = pattern.replace(/\/$/, '');
+    if (entry === pattern || entry === dirPattern || entry.split('/')[0] === dirPattern) {
+      console.log('DEPLOY DOCKER FAIL 清单文件 ' + entry + ' 被 .dockerignore 的 ' + pattern + ' 排除');
+      deployFailures++;
+    }
+  }
+}
+console.log('deploy-manifest ' + (deployFailures === 0 ? 'PASS' : 'FAIL') + ' entries=' + deployFiles.length);
+if (deployFailures) fail = true;
 
 process.exit(fail ? 1 : 0);

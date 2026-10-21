@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 
-const ROOT = __dirname;
+const ROOT = path.resolve(__dirname, '..');
 const MAX_CANVAS_SIDE = 16384;
 const PREFERRED_SCALE = 3;
 
