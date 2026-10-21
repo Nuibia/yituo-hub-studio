@@ -65,6 +65,21 @@
   var CHEVRON_SVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
     + ' stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 
+  /* ---------- WCAG 对比度（配色表单与测试共用） ---------- */
+
+  function colorLuminance(hex) {
+    var channels = [1, 3, 5].map(function (offset) {
+      var value = parseInt(String(hex).slice(offset, offset + 2), 16) / 255;
+      return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  }
+
+  function colorContrast(a, b) {
+    var pair = [colorLuminance(a), colorLuminance(b)].sort(function (x, y) { return y - x; });
+    return (pair[0] + 0.05) / (pair[1] + 0.05);
+  }
+
   return {
     esc: esc,
     escapeRegExp: escapeRegExp,
@@ -73,6 +88,8 @@
     trafficLightsHtml: trafficLightsHtml,
     toast: toast,
     warnOnce: warnOnce,
-    CHEVRON_SVG: CHEVRON_SVG
+    CHEVRON_SVG: CHEVRON_SVG,
+    colorLuminance: colorLuminance,
+    colorContrast: colorContrast
   };
 });

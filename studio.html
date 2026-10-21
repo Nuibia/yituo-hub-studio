@@ -55,6 +55,7 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
       下载 HTML
     </button>
+    <span id="cardSlot" class="picker-slot"></span>
     <button id="btnExportImage" class="btn ghost" type="button">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
       导出长图
@@ -78,6 +79,15 @@
       <label class="author-field">署名 <input id="authorInput" type="text" placeholder="你的名字（可空）" maxlength="24"/></label>
       <button id="btnSample" class="btn tiny ghost">载入示例</button>
       <button id="btnClear" class="btn tiny ghost">清空</button>
+      <span id="historySlot" class="picker-slot"></span>
+    </div>
+    <div id="aiBar" class="ai-bar" hidden>
+      <span>已选中 <b data-ai-count>0</b> 字</span>
+      <button type="button" class="btn tiny ghost" data-ai-action="polish">润色</button>
+      <button type="button" class="btn tiny ghost" data-ai-action="expand">扩写</button>
+      <button type="button" class="btn tiny ghost" data-ai-action="shorten">压缩</button>
+      <button type="button" class="btn tiny ghost" data-ai-setting>AI 设置</button>
+      <button type="button" class="btn tiny ghost" data-ai-stop>停止</button>
     </div>
     <textarea id="editor" spellcheck="false" placeholder="把文章 Markdown 粘进来，右侧立即预览…&#10;&#10;支持：# 标题 / ## 章节 / **加粗**(自动升级为关键词下划线) / ==高亮== / ++下划线++ / 代码块 / 图片 / 表格 / 引用"></textarea>
   </section>
@@ -118,6 +128,10 @@
 <script src="validator.js"></script>
 <script src="original-visuals-data.js"></script>
 <script src="original-visuals.js"></script>
+<script src="draft.js"></script>
+<script src="rich-paste.js"></script>
+<script src="cards.js"></script>
+<script src="ai-polish.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

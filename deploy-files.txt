@@ -15,6 +15,10 @@ converter.js
 validator.js
 original-visuals-data.js
 original-visuals.js
+draft.js
+rich-paste.js
+cards.js
+ai-polish.js
 app.js
 create.js
 assets

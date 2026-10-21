@@ -15,6 +15,9 @@ const OriginalData = require('./original-visuals-data.js');
 const OriginalVisuals = require('./original-visuals.js');
 const Shared = require('./shared.js');
 const escapeRegExp = Shared.escapeRegExp;
+const Draft = require('./draft.js');
+const RichPaste = require('./rich-paste.js');
+const Cards = require('./cards.js');
 const manifest = require('./motion/manifest.json');
 const templateManifest = require('./motion/templates-v6/manifest.json');
 let fail = false;
@@ -69,7 +72,7 @@ checkConditions('local-file-resource-hint', [
 ]);
 
 checkConditions('offline-long-image-export', [
-  ['导出按钮存在', !!studioDoc.querySelector('#btnDownload + #btnExportImage')],
+  ['下载/导出按钮存在', !!studioDoc.querySelector('#btnDownload') && !!studioDoc.querySelector('#btnExportImage')],
   ['html2canvas 脚本引入', !!studioDoc.querySelector('script[src="vendor/html2canvas.min.js"]')],
   ['html2canvas 文件在库', fs.existsSync(path.join(__dirname, 'vendor', 'html2canvas.min.js'))],
   ['exportLongImage 函数存在', appSource.indexOf('function exportLongImage()') !== -1],
@@ -809,6 +812,113 @@ checkConditions('colorway-ui', [
   ['配色弹层样式', stylesSource.indexOf('.color-pop') !== -1]
 ]);
 
+/* ---------- 新功能：草稿 / 富文本粘贴 / 卡片 / 自定义配色 ---------- */
+
+const featureTestsDone = (async function featureTests() {
+  /* 草稿与历史（Node 无 IndexedDB，自动走内存后端） */
+  const draftFailures = [];
+  function draftCheck(name, ok) { if (!ok) draftFailures.push(name); }
+  const draftSpec = Themes.getSpec('ocean');
+  await Draft.saveDraft({ markdown: '# 草稿标题\n\n正文。', config: { themeId: 'ocean', levelId: 'motion-themed-frame' } });
+  const loaded = await Draft.loadDraft();
+  draftCheck('草稿保存后可读回', !!loaded && loaded.markdown.indexOf('草稿标题') !== -1 && loaded.config.themeId === draftSpec.id);
+  draftCheck('草稿带时间戳', !!loaded && typeof loaded.ts === 'number');
+  for (let i = 0; i < 25; i++) {
+    await Draft.saveHistory({ markdown: '# 历史 ' + i, chars: 10 + i, config: { themeId: 'ocean' } });
+  }
+  const historyList = await Draft.listHistory();
+  draftCheck('历史封顶 ' + Draft.HISTORY_LIMIT + ' 条', historyList.length === Draft.HISTORY_LIMIT);
+  draftCheck('历史按时间倒序', historyList[0].markdown.indexOf('24') !== -1);
+  await Draft.removeHistory(historyList[0].id);
+  const afterRemove = await Draft.listHistory();
+  draftCheck('删除指定历史', afterRemove.length === Draft.HISTORY_LIMIT - 1 && afterRemove[0].id !== historyList[0].id);
+  await Draft.clearHistory();
+  const afterClear = await Draft.listHistory();
+  draftCheck('清空历史', afterClear.length === 0);
+  console.log('draft-history ' + (draftFailures.length ? 'FAIL ' + draftFailures.join('、') : 'PASS')
+    + ' limit=' + Draft.HISTORY_LIMIT);
+  if (draftFailures.length) fail = true;
+
+  /* 富文本粘贴 → Markdown */
+  const pasteCases = [
+    ['标题与段落', '<h1>大标题</h1><p>这是<b>加粗</b>和<i>斜体</i>。</p>', '# 大标题\n\n这是**加粗**和*斜体*。'],
+    ['扩展语法', '<p><u>下划线</u>、<del>删除</del>、<mark>高亮</mark></p>', '++下划线++、~~删除~~、==高亮=='],
+    ['列表', '<ul><li>一项</li><li>二项</li></ul><ol><li>第一</li><li>第二</li></ol>', '- 一项\n- 二项\n\n1. 第一\n2. 第二'],
+    ['引用', '<blockquote><p>引用内容</p></blockquote>', '> 引用内容'],
+    ['代码块', '<pre><code class="language-js">let x = 1;</code></pre>', '```js\nlet x = 1;\n```'],
+    ['图片与链接', '<p><img src="https://a.com/x.png" alt="图">与<a href="https://b.com">链接</a></p>', '![图](https://a.com/x.png)与[链接](https://b.com)'],
+    ['表格', '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>', '| A | B |\n| --- | --- |\n| 1 | 2 |'],
+    ['公众号 section 套娃', '<section style="color:red"><section><p><strong>要点</strong>：内容</p></section></section>', '**要点**：内容'],
+    ['脚本与样式被丢弃', '<style>.x{}</style><p>正文</p><script>bad()</script>', '正文']
+  ];
+  const pasteFailures = [];
+  for (const [name, html, expected] of pasteCases) {
+    const actual = RichPaste.toMarkdown(html);
+    if (actual !== expected) pasteFailures.push(name + ' 得到 ' + JSON.stringify(actual));
+  }
+  const markdownDetectOk = RichPaste.looksLikeMarkdown('# 标题\n正文') === true
+    && RichPaste.looksLikeMarkdown('**加粗**开头') === true
+    && RichPaste.looksLikeMarkdown('普通纯文本一行') === false
+    && RichPaste.looksLikeMarkdown('') === false;
+  if (!markdownDetectOk) pasteFailures.push('Markdown 探测');
+  console.log('rich-paste ' + (pasteFailures.length ? 'FAIL ' + pasteFailures.join('；') : 'PASS')
+    + ' cases=' + (pasteCases.length + 1));
+  if (pasteFailures.length) fail = true;
+
+  /* 封面 / 分享卡 */
+  const cardToken = { title: '卡片标题 / 副标题', sub: '副标题', keywords: ['甲', '乙'], parts: 3, author: '张三' };
+  const coverHtml = Cards.coverCard(draftSpec, cardToken);
+  const shareHtml = Cards.shareCard(draftSpec, cardToken, { qr: 'data:image/png;base64,xxxx' });
+  checkConditions('export-cards', [
+    ['封面 900×383 固定尺寸', coverHtml.indexOf('width:900px') !== -1 && coverHtml.indexOf('height:383px') !== -1],
+    ['封面含标题与主题色', coverHtml.indexOf('卡片标题') !== -1 && coverHtml.indexOf(draftSpec.c.primary) !== -1],
+    ['封面转义特殊字符', Cards.coverCard(draftSpec, { title: 'a<b>&"c', keywords: [], parts: 0 }).indexOf('a&lt;b&gt;&amp;&quot;c') !== -1],
+    ['分享卡 1080×1440 固定尺寸', shareHtml.indexOf('width:1080px') !== -1 && shareHtml.indexOf('height:1440px') !== -1],
+    ['分享卡含二维码槽', shareHtml.indexOf('data-qr-slot') !== -1],
+    ['分享卡嵌入二维码图', shareHtml.indexOf('data:image/png;base64,xxxx') !== -1],
+    ['无二维码时给占位提示', Cards.shareCard(draftSpec, cardToken, {}).indexOf('二维码图片') !== -1]
+  ]);
+
+  /* 自定义配色：注册 → 合并 → 渲染合规 → 注销 */
+  const customColors = { paper: '#FFFFFF', surface: '#F2F7F5', ink: '#10241C', muted: '#5E7A6F', accent: '#0E6B5C', accent2: '#9CCDBF', line: '#D5E6DF' };
+  const deepSeaProfile = OriginalData.profileForTheme('deep-sea', 'default');
+  ['wash', 'washSoft', 'decor', 'decorSoft', 'surfaceInk', 'surfaceMuted'].forEach(function (role) {
+    if (typeof deepSeaProfile[role] === 'string' && deepSeaProfile[role].charAt(0) === '#') customColors[role] = deepSeaProfile[role];
+  });
+  if (typeof deepSeaProfile.gridLine === 'string') customColors.gridLine = 'rgba(14,107,92,0.03)';
+  const registerOk = OriginalData.registerColorway('deep-sea', { id: 'custom', name: '自定义', colors: customColors });
+  let customMerged = null;
+  let customRenderOk = false;
+  let customUnregisterOk = false;
+  let customError = null;
+  try {
+    customMerged = OriginalData.profileForTheme('deep-sea', 'custom');
+    const customHtml = OriginalVisuals.render(colorwayRenderTokens, Themes.getSpec('deep-sea'), {
+      levelId: 'motion-themed-frame', motionEnabled: false, colorId: 'custom'
+    }, loadOriginalAssets(OriginalVisuals.assetRequirements('deep-sea', 'motion-themed-frame', false, manifest)), manifest);
+    customRenderOk = Validator.validate(customHtml).ok && customHtml.indexOf('data-original-colorway="custom"') !== -1;
+  } catch (error) { customError = error.message; }
+  OriginalData.unregisterColorway('deep-sea');
+  customUnregisterOk = (OriginalData.colorwayFor('deep-sea', 'custom') || {}).id !== 'custom'
+    && OriginalData.colorwaysForTheme('deep-sea').length === 5;
+  checkConditions('custom-colorway', [
+    ['注册返回成功', registerOk === true],
+    ['未注册主题返回失败', OriginalData.registerColorway('no-such-theme', {}) === false],
+    ['合并携带 colorMap 与下划线', !!customMerged && customMerged.colorMap && customMerged.colorMap.length > 0
+      && customMerged.underline.indexOf(customMerged.accent2) !== -1],
+    ['渲染合规且带追溯属性', customRenderOk],
+    ['注销后恢复 5 条', customUnregisterOk],
+    ['无异常抛出', customError === null]
+  ]);
+
+  /* shared 对比度函数（与 test 侧旧实现一致） */
+  checkConditions('shared-contrast', [
+    ['黑白对比 21', Math.round(Shared.colorContrast('#000000', '#FFFFFF')) === 21],
+    ['对称性', Math.abs(Shared.colorContrast('#1D4ED8', '#FFFFFF') - Shared.colorContrast('#FFFFFF', '#1D4ED8')) < 1e-9],
+    ['中灰自对比 1', Shared.colorContrast('#777777', '#777777') === 1]
+  ]);
+})();
+
 /* ---------- 部署清单：入口 HTML 的本地资源必须全部可上线 ---------- */
 const deployFiles = fs.readFileSync(path.join(__dirname, 'deploy-files.txt'), 'utf8')
   .split('\n').map(function (line) { return line.trim(); })
@@ -850,4 +960,9 @@ for (const entry of deployFiles) {
 console.log('deploy-manifest ' + (deployFailures === 0 ? 'PASS' : 'FAIL') + ' entries=' + deployFiles.length);
 if (deployFailures) fail = true;
 
-process.exit(fail ? 1 : 0);
+featureTestsDone.then(function () {
+  process.exit(fail ? 1 : 0);
+}, function (error) {
+  console.log('FEATURE TESTS CRASH ' + (error && error.message || error));
+  process.exit(1);
+});

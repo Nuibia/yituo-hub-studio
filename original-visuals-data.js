@@ -242,5 +242,30 @@
     return LEVELS[LEVELS.length - 1];
   }
 
-  return { LEVELS: LEVELS, PROFILES: PROFILES, COLORWAYS: COLORWAYS, colorwaysForTheme: colorwaysForTheme, colorwayFor: colorwayFor, profileForTheme: profileForTheme, level: level };
+  /* 运行时注册用户自定义配色（id 固定 'custom'）：同 id 覆盖旧值。
+   * entry.colors 必须覆盖该主题必需的角色（核心 7 项 + 主题携带的扩展角色），
+   * 合法性由 profileForTheme 的 failColorway 在合并时统一校验。
+   */
+  function registerColorway(themeId, entry) {
+    var list = COLORWAYS[themeId];
+    if (!list) return false;
+    var record = { id: entry && entry.id || 'custom', name: entry && entry.name || '自定义', colors: entry && entry.colors || {} };
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === record.id) { list[i] = record; return true; }
+    }
+    list.push(record);
+    return true;
+  }
+
+  function unregisterColorway(themeId, colorId) {
+    var list = COLORWAYS[themeId];
+    if (!list) return false;
+    var id = colorId || 'custom';
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === id) { list.splice(i, 1); return true; }
+    }
+    return false;
+  }
+
+  return { LEVELS: LEVELS, PROFILES: PROFILES, COLORWAYS: COLORWAYS, colorwaysForTheme: colorwaysForTheme, colorwayFor: colorwayFor, profileForTheme: profileForTheme, level: level, registerColorway: registerColorway, unregisterColorway: unregisterColorway };
 });

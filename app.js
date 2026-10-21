@@ -8,6 +8,10 @@
   var Themes = window.Md2GZHThemes;
   var Shared = window.Md2GZHShared;
   var Converter = window.Md2GZHConverter;
+  var Draft = window.Md2GZHDraft;
+  var RichPaste = window.Md2GZHRichPaste;
+  var Cards = window.Md2GZHCards;
+  var AiPolish = window.Md2GZHAiPolish;
   var Validator = window.Md2GZHValidator;
   var Originals = window.Md2GZHOriginalVisuals;
   var OriginalData = window.Md2GZHOriginalData;
@@ -24,6 +28,9 @@
   var levelSlot = document.getElementById('levelPickerSlot');
   var colorSlot = document.getElementById('colorPickerSlot');
   var motionModeBtn = document.getElementById('motionModeBtn');
+  var historySlot = document.getElementById('historySlot');
+  var cardSlot = document.getElementById('cardSlot');
+  var aiBar = document.getElementById('aiBar');
   var previewWidth = 'fit';
 
   var state = {
@@ -279,6 +286,7 @@
       if (renderId === state.renderId) renderFailure(error);
       throw error;
     });
+    scheduleDraftSave();
     return state.pending;
   }
 
@@ -554,16 +562,357 @@
     colorways.forEach(function (colorway) {
       html += '<button class="color-option' + (state.colorId === colorway.id ? ' active' : '') + '" data-color="' + colorway.id + '"><span class="color-chip-dots large">' + colorwayDots(colorway) + '</span><span class="color-copy"><strong>' + colorway.name + '</strong><small>' + spec.name + ' · ' + (colorway.id === 'default' ? '主题原配色' : '定制配色') + '</small></span></button>';
     });
-    html += '</div><p class="level-footnote">每套主题附带 4 套定制配色；L2–L6 全等级生效，L1 黑白极简不参与配色。</p>';
+    var custom = OriginalData.colorwayFor(state.themeId, 'custom');
+    if (custom) {
+      html += '<button class="color-option' + (state.colorId === 'custom' ? ' active' : '') + '" data-color="custom"><span class="color-chip-dots large">' + colorwayDots(custom) + '</span><span class="color-copy"><strong>自定义</strong><small>' + spec.name + ' · 我的配色</small></span></button>';
+    }
+    html += '<button class="color-option color-option-edit" data-color="__edit__"><span class="color-copy"><strong>✎ 自定义配色…</strong><small>调出自己的底色与强调色</small></span></button>';
+    html += '</div><p class="level-footnote">每套主题附带 4 套定制配色 + 1 套自定义；L2–L6 全等级生效，L1 黑白极简不参与配色。</p>';
     var pop = colorDropdown.pop;
     pop.innerHTML = html;
     pop.querySelectorAll('.color-option').forEach(function (option) {
       option.addEventListener('click', function () {
+        if (option.dataset.color === '__edit__') { renderCustomColorForm(pop); return; }
         state.colorId = option.dataset.color;
         colorDropdown.close();
         convert().catch(logConvertError);
       });
     });
+  }
+
+  /* ---------- 草稿 / 排版历史 ---------- */
+
+  function currentConfig() {
+    return {
+      themeId: state.themeId, levelId: state.levelId, motionEnabled: state.motionEnabled,
+      colorId: state.colorId, author: authorInput.value.trim()
+    };
+  }
+
+  function applyConfig(config) {
+    if (!config) return;
+    if (config.themeId && Themes.getSpec(config.themeId)) state.themeId = config.themeId;
+    if (config.levelId && OriginalData.level(config.levelId)) state.levelId = config.levelId;
+    state.motionEnabled = config.motionEnabled !== false;
+    state.colorId = config.colorId || 'default';
+    if (typeof config.author === 'string') authorInput.value = config.author;
+    state.library = libraryForTheme(Themes.getSpec(state.themeId)).id;
+    state.group = 'all';
+    renderThemeButtons();
+    renderLevelControls();
+    renderColorControls();
+  }
+
+  var draftTimer = null;
+  function scheduleDraftSave() {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(function () {
+      Draft.saveDraft({ markdown: editor.value, config: currentConfig() })
+        .catch(function (error) { Shared.warnOnce('草稿保存失败', error); });
+    }, 800);
+  }
+
+  function saveHistoryNow() {
+    if (!editor.value.trim()) return;
+    Draft.saveHistory({
+      markdown: editor.value,
+      chars: Converter.plainText(editor.value).replace(/\s/g, '').length,
+      config: currentConfig()
+    }).catch(function (error) { Shared.warnOnce('历史保存失败', error); });
+  }
+
+  var historyDropdown = null;
+
+  function formatTime(ts) {
+    var d = new Date(ts);
+    function pad(n) { return n < 10 ? '0' + n : String(n); }
+    return (d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function renderHistoryButton() {
+    var button = historyDropdown.buttons[0];
+    button.classList.toggle('open', historyDropdown.open);
+    button.setAttribute('aria-expanded', String(historyDropdown.open));
+    button.setAttribute('aria-controls', 'historyPop');
+    button.innerHTML = '<span class="picker-kind">历史</span>' + Shared.CHEVRON_SVG;
+  }
+
+  function renderHistoryPop() {
+    var pop = historyDropdown.pop;
+    pop.innerHTML = '<div class="level-pop-head"><span class="pop-title">HISTORY · 排版历史</span>'
+      + '<span class="pop-note" data-history-note>…</span></div>'
+      + '<div class="history-list" data-history-list><p class="history-empty">载入中…</p></div>'
+      + '<p class="level-footnote">复制到公众号或下载 HTML 时自动记录，仅存本地，最多 20 条。<button type="button" class="btn tiny ghost" data-history-clear>清空</button></p>';
+    Draft.listHistory().then(function (entries) {
+      var list = pop.querySelector('[data-history-list]');
+      pop.querySelector('[data-history-note]').textContent = entries.length + ' RECORDS';
+      pop.querySelector('[data-history-clear]').addEventListener('click', function () {
+        Draft.clearHistory().then(renderHistoryPop);
+      });
+      if (!entries.length) {
+        list.innerHTML = '<p class="history-empty">还没有记录：复制到公众号或下载 HTML 后会自动保存。</p>';
+        return;
+      }
+      list.innerHTML = '';
+      entries.forEach(function (entry) {
+        var titleMatch = entry.markdown.match(/^#\s*(.+)$/m);
+        var title = (titleMatch && titleMatch[1] || entry.markdown.slice(0, 24) || '未命名').trim();
+        var spec = Themes.getSpec(entry.config && entry.config.themeId);
+        var row = document.createElement('div');
+        row.className = 'history-item';
+        row.innerHTML = '<span class="history-time">' + formatTime(entry.ts) + '</span>'
+          + '<span class="history-title">' + Shared.esc(title.slice(0, 40)) + '</span>'
+          + '<span class="history-meta">' + Shared.esc(spec.name) + ' · ' + entry.chars + ' 字</span>'
+          + '<span class="history-actions"><button type="button" class="btn tiny ghost" data-restore>恢复</button>'
+          + '<button type="button" class="btn tiny ghost" data-remove>删除</button></span>';
+        row.querySelector('[data-restore]').addEventListener('click', function () {
+          editor.value = entry.markdown;
+          applyConfig(entry.config);
+          historyDropdown.close();
+          convert().catch(logConvertError);
+          toast('已恢复 ' + formatTime(entry.ts) + ' 的排版');
+        });
+        row.querySelector('[data-remove]').addEventListener('click', function () {
+          Draft.removeHistory(entry.id).then(renderHistoryPop);
+        });
+        list.appendChild(row);
+      });
+    }).catch(function (error) {
+      pop.querySelector('[data-history-list]').innerHTML = '<p class="history-empty">历史读取失败：' + Shared.esc(error.message || error) + '</p>';
+    });
+  }
+
+  /* ---------- 封面图 / 分享卡导出 ---------- */
+
+  var QR_KEY = 'yth.studio.qr';
+
+  function savedQr() {
+    try { return localStorage.getItem(QR_KEY) || ''; } catch (error) { return ''; }
+  }
+
+  function setQrImage(file) {
+    if (!file || !/^image\//.test(file.type)) { toast('请选择图片文件'); return; }
+    if (file.size > 400 * 1024) { toast('二维码图片请压到 400KB 以内'); return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      try { localStorage.setItem(QR_KEY, reader.result); } catch (error) {
+        toast('保存失败：' + (error.message || error));
+        return;
+      }
+      toast('✓ 二维码已保存，导出分享卡时自动带上');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function coverToken() {
+    var rawTitle = (editor.value.match(/^#\s*(.+)$/m) || [])[1] || '未命名文章';
+    var segs = rawTitle.split('/');
+    var sectionTitles = [];
+    var match;
+    var re = /^##\s*(.+)$/gm;
+    var body = editor.value;
+    while ((match = re.exec(body)) !== null && sectionTitles.length < 3) sectionTitles.push(match[1].trim());
+    return {
+      title: (segs[0] || '').trim() || '未命名文章',
+      sub: segs.length > 1 ? segs.slice(1).join('/').trim() : '',
+      keywords: sectionTitles,
+      parts: (body.match(/^##\s+/gm) || []).length,
+      author: authorInput.value.trim()
+    };
+  }
+
+  var cardStage = null;
+  function ensureCardStage() {
+    if (cardStage) return cardStage;
+    cardStage = document.createElement('div');
+    cardStage.style.position = 'fixed';
+    cardStage.style.left = '-99999px';
+    cardStage.style.top = '0';
+    document.body.appendChild(cardStage);
+    return cardStage;
+  }
+
+  function exportCard(kind) {
+    state.pending.then(function () {
+      if (!state.html) { toast('先粘贴一点内容再导出'); return null; }
+      if (typeof window.html2canvas !== 'function') throw new Error('导出组件未加载');
+      var spec = Themes.getSpec(state.themeId);
+      var token = coverToken();
+      var stage = ensureCardStage();
+      stage.innerHTML = kind === 'cover'
+        ? Cards.coverCard(spec, token)
+        : Cards.shareCard(spec, token, { qr: savedQr() });
+      var node = stage.firstElementChild;
+      return new Promise(function (resolve) { setTimeout(resolve, 80); }).then(function () {
+        var width = parseInt(node.style.width, 10) || 900;
+        var height = parseInt(node.style.height, 10) || 383;
+        return window.html2canvas(node, {
+          backgroundColor: null, scale: 2, width: width, height: height, logging: false
+        });
+      }).then(function (canvas) {
+        return new Promise(function (resolve) { canvas.toBlob(resolve, 'image/png'); });
+      }).then(function (blob) {
+        if (!blob) throw new Error('浏览器未能编码 PNG');
+        var name = (token.title.replace(/[\\/:*?"<>| ]/g, '_').slice(0, 30) || '文章')
+          + (kind === 'cover' ? '_公众号封面_900x383.png' : '_分享卡_1080x1440.png');
+        saveBlob(blob, name);
+        toast('✓ ' + (kind === 'cover' ? '封面图' : '分享卡') + '已导出 PNG');
+      });
+    }).catch(function (error) {
+      toast(error && error.message ? error.message : '导出失败，请稍后重试');
+    });
+  }
+
+  function renderCardControls() {
+    var button = cardDropdown.buttons[0];
+    button.classList.toggle('open', cardDropdown.open);
+    button.setAttribute('aria-expanded', String(cardDropdown.open));
+    button.setAttribute('aria-controls', 'cardPickerPop');
+    button.innerHTML = '<span class="picker-kind">卡片</span>' + Shared.CHEVRON_SVG;
+  }
+
+  function renderCardPop() {
+    var pop = cardDropdown.pop;
+    var qr = savedQr();
+    pop.innerHTML = '<div class="level-pop-head"><span class="pop-title">CARDS · 封面与分享</span>'
+      + '<span class="pop-note">PNG 2×</span></div><div class="color-list">'
+      + '<button class="color-option" data-card="cover"><span class="color-copy"><strong>公众号封面 900×383</strong>'
+      + '<small>当前主题封面卡，直接设为图文封面</small></span></button>'
+      + '<button class="color-option" data-card="share"><span class="color-copy"><strong>分享卡 1080×1440</strong>'
+      + '<small>朋友圈竖卡，' + (qr ? '已带二维码' : '未设置二维码') + '</small></span></button>'
+      + '<button class="color-option" data-card="qr"><span class="color-copy"><strong>设置二维码图片</strong>'
+      + '<small>' + (qr ? '点此更换（导出分享卡自动带上）' : '选择本地二维码图片，导出分享卡时自动嵌入') + '</small></span></button>'
+      + '</div>';
+    pop.querySelectorAll('[data-card]').forEach(function (option) {
+      option.addEventListener('click', function () {
+        cardDropdown.close();
+        var kind = option.dataset.card;
+        if (kind === 'qr') {
+          var input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/*';
+          input.addEventListener('change', function () {
+            if (input.files && input.files[0]) setQrImage(input.files[0]);
+          });
+          input.click();
+          return;
+        }
+        exportCard(kind);
+      });
+    });
+  }
+
+  /* ---------- 自定义配色（colorway id 固定 'custom'，持久化在 localStorage） ---------- */
+
+  var CUSTOM_KEY_PREFIX = 'yth.studio.colorway.';
+
+  var ROLE_LABELS = {
+    paper: '底色', surface: '面板', ink: '正文', muted: '次要文字', accent: '主强调',
+    accent2: '次强调', line: '线条', wash: '底纹', washSoft: '浅底纹',
+    decor: '装饰', decorSoft: '浅装饰', surfaceInk: '面板文字', surfaceMuted: '面板次要'
+  };
+  var EDITABLE_ROLES = ['paper', 'surface', 'ink', 'muted', 'accent', 'accent2', 'line',
+    'wash', 'washSoft', 'decor', 'decorSoft', 'surfaceInk', 'surfaceMuted'];
+
+  function customKey(themeId) { return CUSTOM_KEY_PREFIX + themeId; }
+
+  function readCustomColors(themeId) {
+    try { return JSON.parse(localStorage.getItem(customKey(themeId)) || 'null'); } catch (error) { return null; }
+  }
+
+  function restoreCustomColorways() {
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && key.indexOf(CUSTOM_KEY_PREFIX) === 0) {
+          var themeId = key.slice(CUSTOM_KEY_PREFIX.length);
+          var colors = readCustomColors(themeId);
+          if (colors) OriginalData.registerColorway(themeId, { id: 'custom', name: '自定义', colors: colors });
+        }
+      }
+    } catch (error) { /* 隐私模式：跳过恢复 */ }
+  }
+
+  function deriveGridLine(accent) {
+    var r = parseInt(accent.slice(1, 3), 16);
+    var g = parseInt(accent.slice(3, 5), 16);
+    var b = parseInt(accent.slice(5, 7), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',0.03)';
+  }
+
+  function renderCustomColorForm(pop) {
+    var base = OriginalData.profileForTheme(state.themeId, 'default');
+    var saved = readCustomColors(state.themeId) || {};
+    var roles = EDITABLE_ROLES.filter(function (role) {
+      return typeof base[role] === 'string' && base[role].charAt(0) === '#';
+    });
+    var html = '<div class="level-pop-head"><span class="pop-title">CUSTOM · 自定义配色</span>'
+      + '<span class="pop-note" data-contrast-note></span></div><div class="custom-color-grid">';
+    roles.forEach(function (role) {
+      html += '<label class="custom-color-row"><span>' + (ROLE_LABELS[role] || role) + '</span>'
+        + '<input type="color" data-role="' + role + '" value="' + (saved[role] || base[role]) + '"></label>';
+    });
+    html += '</div><p class="level-footnote" data-contrast-hint>正文与底色的对比度会在修改时实时提示。</p>'
+      + '<div class="custom-color-actions"><button type="button" class="btn tiny primary" data-cc-apply>保存并应用</button>'
+      + '<button type="button" class="btn tiny ghost" data-cc-reset>恢复默认</button>'
+      + '<button type="button" class="btn tiny ghost" data-cc-back>返回</button></div>';
+    pop.innerHTML = html;
+
+    function collectColors() {
+      var colors = {};
+      pop.querySelectorAll('input[data-role]').forEach(function (input) { colors[input.dataset.role] = input.value; });
+      return colors;
+    }
+
+    function refreshContrast() {
+      var colors = collectColors();
+      var ratio = Shared.colorContrast(colors.ink, colors.paper);
+      var note = pop.querySelector('[data-contrast-note]');
+      var hint = pop.querySelector('[data-contrast-hint]');
+      note.textContent = '对比度 ' + ratio.toFixed(2);
+      var low = ratio < 4.5;
+      note.style.color = low ? '#C0392B' : '';
+      hint.textContent = low
+        ? '正文/底色对比度 ' + ratio.toFixed(2) + '，低于 4.5 手机上可能看不清，建议加深正文或提亮底色。'
+        : '正文/底色对比度 ' + ratio.toFixed(2) + '，可读性达标。';
+    }
+
+    pop.querySelectorAll('input[data-role]').forEach(function (input) {
+      input.addEventListener('input', refreshContrast);
+    });
+    refreshContrast();
+
+    pop.querySelector('[data-cc-apply]').addEventListener('click', function () {
+      var colors = collectColors();
+      if (typeof base.gridLine === 'string' && base.gridLine.indexOf('rgba') === 0) {
+        colors.gridLine = deriveGridLine(colors.accent);
+      }
+      OriginalData.registerColorway(state.themeId, { id: 'custom', name: '自定义', colors: colors });
+      try {
+        OriginalData.profileForTheme(state.themeId, 'custom');
+      } catch (error) {
+        OriginalData.unregisterColorway(state.themeId);
+        toast('配色无效：' + (error.message || error));
+        return;
+      }
+      try { localStorage.setItem(customKey(state.themeId), JSON.stringify(colors)); }
+      catch (error) { Shared.warnOnce('自定义配色未能持久化', error); }
+      state.colorId = 'custom';
+      colorDropdown.close();
+      renderColorControls();
+      convert().catch(logConvertError);
+      toast('✓ 已应用自定义配色');
+    });
+    pop.querySelector('[data-cc-reset]').addEventListener('click', function () {
+      OriginalData.unregisterColorway(state.themeId);
+      try { localStorage.removeItem(customKey(state.themeId)); } catch (error) {}
+      if (state.colorId === 'custom') state.colorId = 'default';
+      renderColorPop();
+      renderColorControls();
+      convert().catch(logConvertError);
+      toast('已恢复主题默认配色');
+    });
+    pop.querySelector('[data-cc-back]').addEventListener('click', renderColorPop);
   }
 
   /* ---------- 复制 / 下载 ---------- */
@@ -592,9 +941,9 @@
       var rich = new Blob([state.html], { type: 'text/html' });
       if (navigator.clipboard && window.ClipboardItem) {
         navigator.clipboard.write([new ClipboardItem({ 'text/html': rich, 'text/plain': plain })])
-          .then(function () { toast('✓ 已复制，去公众号编辑器粘贴'); })
-          .catch(function () { fallbackCopy(); toast('✓ 已复制（兼容模式）'); });
-      } else { fallbackCopy(); toast('✓ 已复制（兼容模式）'); }
+          .then(function () { toast('✓ 已复制，去公众号编辑器粘贴'); saveHistoryNow(); })
+          .catch(function () { fallbackCopy(); toast('✓ 已复制（兼容模式）'); saveHistoryNow(); });
+      } else { fallbackCopy(); toast('✓ 已复制（兼容模式）'); saveHistoryNow(); }
     }).catch(function () { toast('高级排版尚未载入完成'); });
   }
 
@@ -625,6 +974,7 @@
     state.pending.then(function () {
       if (!state.html) { toast('先粘贴一点内容'); return; }
       saveBlob(new Blob(['\ufeff' + state.html], { type: 'text/html;charset=utf-8' }), exportName('html'));
+      saveHistoryNow();
     }).catch(function () { toast('高级排版尚未载入完成'); });
   }
 
@@ -710,14 +1060,95 @@
 
   renderThemeButtons();
   setPreviewWidth(previewWidth);
+
+  restoreCustomColorways();
+
+  historyDropdown = createDropdown(historySlot, {
+    popId: 'historyPop',
+    popClass: 'color-pop history-pop',
+    buildButtons: function (dropdown) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'picker-btn history-btn';
+      button.addEventListener('click', function (event) {
+        event.stopPropagation();
+        dropdown.setOpen(!dropdown.open);
+      });
+      historySlot.appendChild(button);
+      return [button];
+    },
+    renderButtons: function () {
+      if (!historyDropdown) return;
+      renderHistoryButton();
+    },
+    renderPop: renderHistoryPop
+  });
+
+  var cardDropdown = createDropdown(cardSlot, {
+    popId: 'cardPickerPop',
+    popClass: 'color-pop card-pop',
+    buildButtons: function (dropdown) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'picker-btn card-btn';
+      button.addEventListener('click', function (event) {
+        event.stopPropagation();
+        dropdown.setOpen(!dropdown.open);
+      });
+      cardSlot.appendChild(button);
+      return [button];
+    },
+    renderButtons: function () {
+      if (!cardDropdown) return;
+      renderCardControls();
+    },
+    renderPop: renderCardPop
+  });
+
+  editor.addEventListener('paste', function (event) {
+    var data = event.clipboardData;
+    if (!data) return;
+    var html = data.getData('text/html');
+    var plain = data.getData('text/plain') || '';
+    if (!html || RichPaste.looksLikeMarkdown(plain)) return;
+    var markdown = RichPaste.toMarkdown(html);
+    if (!markdown.trim()) return;
+    event.preventDefault();
+    var caret = editor.selectionStart;
+    if (caret === null || caret === undefined) caret = editor.value.length;
+    var end = editor.selectionEnd;
+    if (end === null || end === undefined || end < caret) end = caret;
+    var before = editor.value.slice(0, caret);
+    var after = editor.value.slice(end);
+    if (before && !/\n\n$/.test(before)) before += /\n$/.test(before) ? '\n' : '\n\n';
+    editor.value = before + markdown + '\n\n' + after;
+    var pos = (before + markdown).length + 2;
+    editor.setSelectionRange(pos, pos);
+    toast('已把富文本转换为 Markdown');
+    scheduleConvert();
+  });
+
+  if (aiBar && AiPolish && typeof AiPolish.init === 'function') {
+    AiPolish.init({ editor: editor, bar: aiBar, toast: toast, scheduleConvert: scheduleConvert });
+  }
+
   editor.value = SAMPLE_MD;
-  try {
-    var handoffMd = localStorage.getItem('yth.create.handoff') || '';
-    if (handoffMd.trim()) {
-      localStorage.removeItem('yth.create.handoff');
-      editor.value = handoffMd;
-      toast('已载入 AI 创作的文章，选一套主题即可复制');
+  Draft.loadDraft().then(function (draft) {
+    if (draft && draft.markdown && draft.markdown.trim()) {
+      editor.value = draft.markdown;
+      applyConfig(draft.config);
     }
-  } catch (error) { /* 隐私模式等场景回落到示例文章 */ }
-  convert().catch(logConvertError);
+    try {
+      var handoffMd = localStorage.getItem('yth.create.handoff') || '';
+      if (handoffMd.trim()) {
+        localStorage.removeItem('yth.create.handoff');
+        editor.value = handoffMd;
+        toast('已载入 AI 创作的文章，选一套主题即可复制');
+      }
+    } catch (error) { /* 隐私模式等场景回落到草稿/示例 */ }
+  }).catch(function (error) {
+    Shared.warnOnce('草稿读取失败', error);
+  }).finally(function () {
+    convert().catch(logConvertError);
+  });
 })();

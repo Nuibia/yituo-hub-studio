@@ -9,7 +9,7 @@
     "compile:advanced": "node tools/compile-advanced-standard402-v30.js",
     "qa:advanced-browser": "node tools/qa-advanced-browser-v30.js",
     "qa:long-image-export": "node tools/qa-long-image-export-browser.js",
-    "check": "node --check shared.js && node --check themes-data.js && node --check themes.js && node --check converter.js && node --check validator.js && node --check original-visuals-data.js && node --check original-visuals.js && node --check app.js && node --check create.js && node --check tools/compile-advanced-standard402-v30.js && node --check tools/qa-advanced-browser-v30.js && node --check tools/qa-long-image-export-browser.js && node test.js",
+    "check": "node --check shared.js && node --check draft.js && node --check rich-paste.js && node --check cards.js && node --check ai-polish.js && node --check themes-data.js && node --check themes.js && node --check converter.js && node --check validator.js && node --check original-visuals-data.js && node --check original-visuals.js && node --check app.js && node --check create.js && node --check tools/compile-advanced-standard402-v30.js && node --check tools/qa-advanced-browser-v30.js && node --check tools/qa-long-image-export-browser.js && node test.js",
     "serve": "python -m http.server 8123"
   },
   "engines": {
